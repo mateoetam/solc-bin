@@ -15,6 +15,7 @@ jobs:
   build-emscripten-nightly:
     runs-on: ubuntu-latest
     outputs:
+      solidity-version: ${{ env.SOLIDITY_VERSION }}
       nightly-version: ${{ env.NIGHTLY_VERSION }}
       matching-nightlies-in-the-repo: ${{ env.MATCHING_NIGHTLIES_IN_THE_REPO }}
 
@@ -48,6 +49,7 @@ jobs:
           )"
           nightly_version="v${solidity_version}-nightly.${last_commit_date}+commit.${last_commit_hash}"
 
+          echo "::set-env name=SOLIDITY_VERSION::${solidity_version}"
           echo "::set-env name=NIGHTLY_VERSION::${nightly_version}"
           echo "::set-env name=MATCHING_NIGHTLIES_IN_THE_REPO::${matching_nightlies_in_the_repo}"
 
@@ -65,9 +67,35 @@ jobs:
           name: soljson.js
           path: solidity/upload/soljson.js
 
-  add-nightly-and-push:
+
+  test-emscripten-nightly:
     runs-on: ubuntu-latest
     needs: build-emscripten-nightly
+
+    env:
+      SOLIDITY_VERSION: ${{ needs.build-emscripten-nightly.outputs.solidity-version }}
+
+    if: "!needs.build-emscripten-nightly.outputs.matching-nightlies-in-the-repo"
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          repository: 'ethereum/solidity'
+
+      - name: Download soljson.js artifact
+        uses: actions/download-artifact@v2
+        with:
+          name: soljson.js
+
+      - name: Run solc-js tests
+        run: |
+          test/externalTests/solc-js/solc-js.sh "${PWD}/soljson.js" "$SOLIDITY_VERSION"
+
+
+  add-nightly-and-push:
+    runs-on: ubuntu-latest
+    needs:
+      - build-emscripten-nightly
+      - test-emscripten-nightly
 
     env:
       NIGHTLY_VERSION: ${{ needs.build-emscripten-nightly.outputs.nightly-version }}
